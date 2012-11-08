@@ -1,0 +1,23 @@
+@import url('sp://import/css/api.css');
+
+h1 {
+	text-align: center;
+	font-size: 24px;
+	padding: 20px;
+}
+
+h2 {
+	padding: 20px;
+	font-size: 18px;
+}
+
+#history {
+	height: 200px;
+	border: 1px solid #000;
+	margin: 20px;
+	overflow: auto;
+}
+
+#status {
+	padding: 20px;
+}
