@@ -13,5 +13,7 @@
 	"RequiredPermissions": [
 		"http://gyran.se:8888",
 		"http://192.168.1.101"
-	]
+	],
+	"BundleVersion": "0.1",
+	"VendorIdentifier": "se.gyran"
 }

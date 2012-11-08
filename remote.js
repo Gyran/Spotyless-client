@@ -4,6 +4,10 @@ var models = sp.require('sp://import/scripts/api/models');
 var player = models.player;
 /*********************/
 
+/* Remote variables */
+BACKEND_HOST = 'http://192.168.1.101:1337';
+/********************/
+
 /* 'Static' variables */
 var STATUS_STOPPED = 0;
 var STATUS_LISTENING = 1;
@@ -13,7 +17,7 @@ var STATUS_OFFLINE = 2;
 /* HTML */
 var HTML_STATUS;
 var HTML_USER;
-var HTML_COMMAND_HISTORY;
+var HTML_HISTORY;
 var HTML_TOGGLE_BUTTON;
 var HTML_SEND_TRACK_BUTTON;
 /********/
@@ -34,11 +38,11 @@ exports.init = init;
 
 function init() {
 	/* setup html elements */
-	HTML_USER = document.getElementById('user');
-	HTML_STATUS = document.getElementById('status');
-	HTML_HISTORY = document.getElementById('history');
-	HTML_TOGGLE_BUTTON = document.getElementById('btnToggle');
-	HTML_SEND_TRACK_BUTTON = document.getElementById('btnSendTrack');
+	HTML_USER = $('#user');
+	HTML_STATUS = $('#status');
+	HTML_HISTORY = $('#history');
+	HTML_TOGGLE_BUTTON = $('#btnToggle');
+	HTML_SEND_TRACK_BUTTON = $('#btnSendTrack');
 
 	status = STATUS_STOPPED;
 
@@ -60,8 +64,8 @@ function init() {
 // bind buttons to events
 function setupButtons() {
 	// Toggle button
-	HTML_TOGGLE_BUTTON.addEventListener('click', toggleRemote);
-	HTML_SEND_TRACK_BUTTON.addEventListener('click', sendCurrentTrack);
+	HTML_TOGGLE_BUTTON.click(toggleRemote);
+	HTML_SEND_TRACK_BUTTON.click(sendCurrentTrack);
 	
 }
 
@@ -69,7 +73,6 @@ function stopApp() {
 	logApp('Stopped');
 	status = STATUS_STOPPED;
 	updateStatus();
-	req.abort();
 }
 
 function startApp() {
@@ -99,19 +102,19 @@ function toggleRemote() {
 function updateStatus() {
 	switch (status) {
 		case STATUS_STOPPED:
-			HTML_STATUS.innerText = 'Not listening';
-			HTML_TOGGLE_BUTTON.innerText = 'Start';
+			HTML_STATUS.text('Not listening');
+			HTML_TOGGLE_BUTTON.text('Start');
 			break;
 		case STATUS_LISTENING:
-			HTML_STATUS.innerText = 'Listening';
-			HTML_TOGGLE_BUTTON.innerText = 'Stop';
+			HTML_STATUS.text('Listening');
+			HTML_TOGGLE_BUTTON.text('Stop');
 			break;
 		case STATUS_OFFLINE:
-			HTML_STATUS.innerText = 'Service offline';
-			HTML_TOGGLE_BUTTON.innerText = 'Retry';
+			HTML_STATUS.text('Service offline');
+			HTML_TOGGLE_BUTTON.text('Retry');
 			break;
 		default:
-			HTML_STATUS.innerText = 'Unknown status';
+			HTML_STATUS.text('Unknown status');
 			break;
 	}
 }
@@ -147,52 +150,29 @@ function serverDown() {
 }
 
 function waitForCommand() {
-	if (req) {
-		req.abort();
-	}	
-	var lastIndex = 0;
-	req = new XMLHttpRequest();
-	req.timeout = 10;
+	if (status != STATUS_LISTENING) {
+		return;
+	}
 
-	console.log("Waiting for command!");
+	console.log(BACKEND_HOST + '/addSpotify');
 
-	req.open('GET', 'http://192.168.1.101:1337/addSpotify?user=' + user, true);
-
-	req.onreadystatechange = function() {
-		console.log(req);
-   		if (req.status == 200 && req.readyState == 4) {
-   			
-   			//var command = req.responseText.substr(lastIndex);
-   			//lastIndex = req.responseText.length;
-   			var command = req.responseText;
-   			parseCommand(command);
-
-   			waitForCommand();
-   		}
-  	};
-
-  	req.onload = function() {
-  		waitForCommand();
-  	}
-
-  	req.onerror = function() {
-  		++reconnectAttempts;
-  		if (reconnectTimer == -1) {
-  			reconnectTimer = setTimeout(function() { serverDown(); }, 300);
-  		}
-  		waitForCommand();
-  	};
-/*
-  	req.oncomplete = function() {
-  		console.log('oncomplete');
-  	}
-
-  	req.onerror = function() {
-  		console.log("onerror");
-  		stopApp();
-  	}
-*/
-	req.send();
+	$.post(BACKEND_HOST + '/addSpotify',
+			{
+				user: user
+			},
+			function(data) {
+				console.log("success", data);
+				parseCommand(data);
+				waitForCommand();
+			}
+		)
+		.error(function(jqXHR, textStatus) {
+			++reconnectAttempts;
+  			if (reconnectTimer == -1) {
+  				reconnectTimer = setTimeout(function() { serverDown(); }, 300);
+  			}
+  			waitForCommand();
+		});
 }
 
 /* Logging */
@@ -214,7 +194,8 @@ function nowStr() {
 }
 
 function log(l) {
-	HTML_HISTORY.innerText = nowStr() + ' - ' + l + '\n' + HTML_HISTORY.innerText;
+	console.log('Log', l);
+	HTML_HISTORY.prepend(nowStr() + ' - ' + l + '<br>');
 }
 
 function logCommand(command) {
@@ -230,15 +211,19 @@ function logApp(message) {
 /* Send updates */
 
 function sendCurrentTrack() {
-	var req = new XMLHttpRequest();
+	console.log(player.track);
+	sendUpdate('currentTrack', {track: player.track.name});
 
-	req.open('GET', 'http://192.168.1.101:1337/sendClientUpdate?user=' + user 
-		+ '&update=currentTrack&value=' +  player.track
-		, true);
+}
 
-	req.send();
-
-	console.log("sent track");
+function sendUpdate(type, data) {
+	var sendData = { type: type, data: data};
+	$.post(BACKEND_HOST + '/sendClientUpdate',
+		sendData,
+		function() {
+			console.log('Sent data', sendData);
+		}
+	);
 }
 
 /****************/
