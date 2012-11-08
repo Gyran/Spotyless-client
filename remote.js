@@ -5,7 +5,7 @@ var player = models.player;
 /*********************/
 
 /* Remote variables */
-BACKEND_HOST = 'http://192.168.1.101:1337';
+BACKEND_HOST = 'http://gyran.se:9003';
 /********************/
 
 /* 'Static' variables */
@@ -50,15 +50,24 @@ function init() {
 
 	user = sp.core.getAnonymousUserId();
 
-	HTML_USER.innerText = 'Userkey: ' + user;
+	HTML_USER.text('Userkey: ' + user);
+	$('#userinput').val(user);
 
 
 	setupButtons();
 
+	player.observe(models.EVENT.CHANGE, playerChanged);
 
 	logApp('Initialized');
 
 	startApp();
+}
+
+function playerChanged(event) {
+	console.log(event);
+	if (event.data.curtrack) {
+		sendCurrentTrack();
+	}
 }
 
 // bind buttons to events
@@ -103,18 +112,34 @@ function updateStatus() {
 	switch (status) {
 		case STATUS_STOPPED:
 			HTML_STATUS.text('Not listening');
+			HTML_STATUS.removeClass('bad good').addClass('bad');
 			HTML_TOGGLE_BUTTON.text('Start');
 			break;
 		case STATUS_LISTENING:
 			HTML_STATUS.text('Listening');
+			HTML_STATUS.removeClass('bad good').addClass('good');
 			HTML_TOGGLE_BUTTON.text('Stop');
 			break;
 		case STATUS_OFFLINE:
 			HTML_STATUS.text('Service offline');
+			HTML_STATUS.removeClass('bad good').addClass('bad');
 			HTML_TOGGLE_BUTTON.text('Retry');
 			break;
 		default:
 			HTML_STATUS.text('Unknown status');
+			HTML_STATUS.removeClass('bad good').addClass('bad');
+			break;
+	}
+}
+
+function hasPermission(type) {
+	switch (type) {
+		case 'player':
+			return true;
+			break;
+		default:
+			log('Tried to use permission ' + type);
+			return false;
 			break;
 	}
 }
@@ -122,20 +147,24 @@ function updateStatus() {
 function parseCommand(command) {
 	console.log("Getting command", command);
 
-	switch (command) {
-		case 'playpause':
-			playpause();
-			break;
-		case 'next':
-			nextTrack();
-			break;
-		case 'previous':
-			previousTrack();
-			break;
+	if (hasPermission(command.type)) {
+		if (command.type == 'player') {
+			switch (command.action) {
+				case 'playpause':
+					playpause();
+					break;
+				case 'next':
+					nextTrack();
+					break;
+				case 'previous':
+					previousTrack();
+					break;
 
-		default:
-			logCommand("Unknown command");
-			break;
+				default:
+					logCommand("Unknown command");
+					break;
+			}
+		}
 	}
 }
 
@@ -164,7 +193,8 @@ function waitForCommand() {
 				console.log("success", data);
 				parseCommand(data);
 				waitForCommand();
-			}
+			},
+			'json'
 		)
 		.error(function(jqXHR, textStatus) {
 			++reconnectAttempts;
@@ -211,17 +241,16 @@ function logApp(message) {
 /* Send updates */
 
 function sendCurrentTrack() {
-	console.log(player.track);
-	sendUpdate('currentTrack', {track: player.track.name});
+	sendUpdate('currentTrack', {track: player.track});
 
 }
 
 function sendUpdate(type, data) {
-	var sendData = { type: type, data: data};
 	$.post(BACKEND_HOST + '/sendClientUpdate',
-		sendData,
-		function() {
-			console.log('Sent data', sendData);
+		{ user: user, type: type, data: JSON.stringify(data) },
+		function(res) {
+			console.log('Sent data', data);
+			console.log('response', res);
 		}
 	);
 }
