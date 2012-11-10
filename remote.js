@@ -5,7 +5,7 @@ var player = models.player;
 /*********************/
 
 /* Remote variables */
-BACKEND_HOST = 'http://gyran.se:9003';
+var BACKEND_HOST = 'http://gyran.se:9004';
 /********************/
 
 /* 'Static' variables */
@@ -24,8 +24,8 @@ var HTML_SEND_TRACK_BUTTON;
 
 // userid
 var user;
-// the request that is waiting for the command
-var req;
+// socket
+var socket;
 
 // status for the app
 var status;
@@ -64,17 +64,14 @@ function init() {
 }
 
 function playerChanged(event) {
-	console.log(event);
-	if (event.data.curtrack) {
-		sendCurrentTrack();
-	}
+	sendPlayerUpdate();
 }
 
 // bind buttons to events
 function setupButtons() {
 	// Toggle button
 	HTML_TOGGLE_BUTTON.click(toggleRemote);
-	HTML_SEND_TRACK_BUTTON.click(sendCurrentTrack);
+	HTML_SEND_TRACK_BUTTON.click(null);
 	
 }
 
@@ -85,16 +82,7 @@ function stopApp() {
 }
 
 function startApp() {
-	logApp('Started');
-	status = STATUS_LISTENING;
-	resetReconnect()
-	waitForCommand();
-	updateStatus();
-}
-
-function resetReconnect() {
-	reconnectTimer = -1;
-	reconnectAttempts = 0;
+	connect();
 }
 
 function toggleRemote() {
@@ -110,25 +98,25 @@ function toggleRemote() {
 
 function updateStatus() {
 	switch (status) {
-		case STATUS_STOPPED:
-			HTML_STATUS.text('Not listening');
-			HTML_STATUS.removeClass('bad good').addClass('bad');
-			HTML_TOGGLE_BUTTON.text('Start');
-			break;
-		case STATUS_LISTENING:
-			HTML_STATUS.text('Listening');
-			HTML_STATUS.removeClass('bad good').addClass('good');
-			HTML_TOGGLE_BUTTON.text('Stop');
-			break;
-		case STATUS_OFFLINE:
-			HTML_STATUS.text('Service offline');
-			HTML_STATUS.removeClass('bad good').addClass('bad');
-			HTML_TOGGLE_BUTTON.text('Retry');
-			break;
-		default:
-			HTML_STATUS.text('Unknown status');
-			HTML_STATUS.removeClass('bad good').addClass('bad');
-			break;
+	case STATUS_STOPPED:
+		HTML_STATUS.text('Not listening');
+		HTML_STATUS.removeClass('bad good').addClass('bad');
+		HTML_TOGGLE_BUTTON.text('Start');
+		break;
+	case STATUS_LISTENING:
+		HTML_STATUS.text('Listening');
+		HTML_STATUS.removeClass('bad good').addClass('good');
+		HTML_TOGGLE_BUTTON.text('Stop');
+		break;
+	case STATUS_OFFLINE:
+		HTML_STATUS.text('Service offline');
+		HTML_STATUS.removeClass('bad good').addClass('bad');
+		HTML_TOGGLE_BUTTON.text('Retry');
+		break;
+	default:
+		HTML_STATUS.text('Unknown status');
+		HTML_STATUS.removeClass('bad good').addClass('bad');
+		break;
 	}
 }
 
@@ -144,65 +132,63 @@ function hasPermission(type) {
 	}
 }
 
-function parseCommand(command) {
+function gotCommand(command) {
 	console.log("Getting command", command);
 
 	if (hasPermission(command.type)) {
 		if (command.type == 'player') {
 			switch (command.action) {
-				case 'playpause':
-					playpause();
-					break;
-				case 'next':
-					nextTrack();
-					break;
-				case 'previous':
-					previousTrack();
-					break;
-
-				default:
-					logCommand("Unknown command");
-					break;
+			case 'playpause':
+				cmdPlaypause();
+				break;
+			case 'next':
+				cmdNext();
+				break;
+			case 'previous':
+				cmdPrevious();
+				break;
+			case 'shuffle':
+				cmdShuffle();
+				break;
+			case 'repeat':
+				cmdRepeat();
+				break;
+			default:
+				logCommand("Unknown command");
+				break;
 			}
 		}
 	}
 }
 
-function serverDown() {
-	if (reconnectAttempts > 3) {
-		console.log("Server probably down!", reconnectAttempts);
-		stopApp();
-	} else {
-		console.log("Reconnected!");
-		resetReconnect();
-	}
+function clientConnected() {
+	logApp('client connected');
+	sendPlayerUpdate();
 }
 
-function waitForCommand() {
-	if (status != STATUS_LISTENING) {
-		return;
-	}
+function connectionEstablished() {
+	status = STATUS_LISTENING;
+	updateStatus();
+	logApp("Socket connected");
+}
 
-	console.log(BACKEND_HOST + '/addSpotify');
+function connect() {
+	socket = io.connect(BACKEND_HOST + '/spotify', { reconnect: false });
+	socket.emit('register', { user: user });
 
-	$.post(BACKEND_HOST + '/addSpotify',
-			{
-				user: user
-			},
-			function(data) {
-				console.log("success", data);
-				parseCommand(data);
-				waitForCommand();
-			},
-			'json'
-		)
-		.error(function(jqXHR, textStatus) {
-			++reconnectAttempts;
-  			if (reconnectTimer == -1) {
-  				reconnectTimer = setTimeout(function() { serverDown(); }, 300);
-  			}
-  			waitForCommand();
-		});
+	socket.on('ready', connectionEstablished);
+	socket.on('gotCommand', gotCommand);
+	socket.on('clientConnected', clientConnected);
+}
+
+function getPlayerObject() {
+	return playerObj = {
+		'track': player.track,
+		'repeat': player.repeat,
+		'shuffle': player.shuffle,
+		'volume': player.volume,
+		'playing': player.playing
+	};
 }
 
 /* Logging */
@@ -224,7 +210,6 @@ function nowStr() {
 }
 
 function log(l) {
-	console.log('Log', l);
 	HTML_HISTORY.prepend(nowStr() + ' - ' + l + '<br>');
 }
 
@@ -240,27 +225,19 @@ function logApp(message) {
 
 /* Send updates */
 
-function sendCurrentTrack() {
-	sendUpdate('currentTrack', {track: player.track});
-
-}
-
-function sendUpdate(type, data) {
-	$.post(BACKEND_HOST + '/sendClientUpdate',
-		{ user: user, type: type, data: JSON.stringify(data) },
-		function(res) {
-			console.log('Sent data', data);
-			console.log('response', res);
-		}
-	);
+function sendPlayerUpdate() {
+	socket.emit('playerUpdated', getPlayerObject());
 }
 
 /****************/
 
 /* Commands */
 
-function playpause() {
-	player.playing = !(player.playing);
+function cmdPlaypause() {
+	if (!player.canPlayPause) {
+		return;
+	}
+	player.playing = !player.playing;
 	if (player.playing) {
 		logCommand('Play');
 	} else {
@@ -268,14 +245,45 @@ function playpause() {
 	}
 }
 
-function nextTrack() {
+function cmdNext() {
+	if (!player.canPlayNext) {
+		return;
+	}
 	player.next();
 	logCommand('Next track');
 }
 
-function previousTrack() {
+function cmdPrevious() {
+	if (!player.canPlayPrevious) {
+		return;
+	}
 	player.previous();
 	logCommand('Previous track');
+}
+
+function cmdShuffle() {
+	if (!player.canChangeShuffle) {
+		return;
+	}
+	player.shuffle = !player.shuffle;
+	if (player.shuffle) {
+		logCommand('Activate shuffle');
+	} else {
+		logCommand('Deactivate shuffle');
+	}
+}
+
+function cmdRepeat() {
+	if (!player.canChangeRepeat) {
+		return;
+	}
+
+	player.repeat = !player.repeat;
+	if (player.repeat) {
+		logCommand('Activate repeat');
+	} else {
+		logCommand('Deactivate repeat');
+	}
 }
 
 /************/
