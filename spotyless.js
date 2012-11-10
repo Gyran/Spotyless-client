@@ -1,3 +1,7 @@
+/**
+By Gyran!
+**/
+
 /* Spotify variables */
 var sp = getSpotifyApi(1);
 var models = sp.require('sp://import/scripts/api/models');
@@ -26,6 +30,7 @@ var HTML_SEND_TRACK_BUTTON;
 var user;
 // socket
 var socket;
+var firstTime = true;
 
 // status for the app
 var status;
@@ -76,12 +81,14 @@ function setupButtons() {
 }
 
 function stopApp() {
-	logApp('Stopped');
+	socket.disconnect();
+	logApp('Stopping');
 	status = STATUS_STOPPED;
 	updateStatus();
 }
 
 function startApp() {
+	logApp('Starting');
 	connect();
 }
 
@@ -172,13 +179,22 @@ function connectionEstablished() {
 	logApp("Socket connected");
 }
 
-function connect() {
-	socket = io.connect(BACKEND_HOST + '/spotify', { reconnect: false });
-	socket.emit('register', { user: user });
+function disconnected() {
+	console.log('socket disconnected');
+}
 
-	socket.on('ready', connectionEstablished);
-	socket.on('gotCommand', gotCommand);
-	socket.on('clientConnected', clientConnected);
+function connect() {
+	socket = io.connect(BACKEND_HOST + '/spotify');
+
+	if (firstTime) {
+		socket.on('ready', connectionEstablished);
+		socket.on('gotCommand', gotCommand);
+		socket.on('clientConnected', clientConnected);
+		socket.on('disconnect', disconnected);
+		firstTime = false;
+	}
+
+	socket.emit('register', { user: user });
 }
 
 function getPlayerObject() {
@@ -235,6 +251,7 @@ function sendPlayerUpdate() {
 
 function cmdPlaypause() {
 	if (!player.canPlayPause) {
+		console.log('cnat playpause');
 		return;
 	}
 	player.playing = !player.playing;

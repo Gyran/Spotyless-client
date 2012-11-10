@@ -2,13 +2,14 @@
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>Spotify Remote</title>
+	<title>Spotyless</title>
 	<script type="text/javascript" src="socket.io.js"></script>
 	<script type="text/javascript" src="jQuery-1.8.2.js"></script>
 	<link rel="stylesheet" href="sp://import/css/adam.css">
-	<link rel="stylesheet" href="remote.css">
+	<link rel="stylesheet" href="style.css">
+
 </head>
-<body onload="sp = getSpotifyApi(1); remote = sp.require('remote'); remote.init();">
+<body onload="sp = getSpotifyApi(1); spotyless = sp.require('spotyless'); spotyless.init();">
 <h1 id="header">Spotify remote!</h1>
 <h1 id="status">Not listessssning</h1>
 <h2 id="user"><!-- --></h2>
