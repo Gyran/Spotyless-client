@@ -82,9 +82,6 @@ function setupButtons() {
 
 function stopApp() {
 	socket.disconnect();
-	logApp('Stopping');
-	status = STATUS_STOPPED;
-	updateStatus();
 }
 
 function startApp() {
@@ -180,11 +177,13 @@ function connectionEstablished() {
 }
 
 function disconnected() {
-	console.log('socket disconnected');
+	logApp('Socket disconnected');
+	status = STATUS_STOPPED;
+	updateStatus();
 }
 
 function connect() {
-	socket = io.connect(BACKEND_HOST + '/spotify');
+	socket = io.connect(BACKEND_HOST + '/spotify');	
 
 	if (firstTime) {
 		socket.on('ready', connectionEstablished);
