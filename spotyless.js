@@ -67,12 +67,16 @@ function init() {
 }
 
 function playerChanged(e) {
+	var update = false;
 	$.each(e.data, function (key, value) {
 		if (value) {
-			sendPlayerUpdate();
+			update = true;
 			return;
 		}
 	});
+	if (update) {
+		sendPlayerUpdate();
+	}
 }
 
 // bind buttons to events
@@ -176,6 +180,7 @@ function disconnected() {
 function wrongPassword() {
 	$('#password').val('');
 	$('#password').addClass('wrong');
+	$('#btnLogin').removeAttr('disabled');
 }
 
 function authenticated(username) {
