@@ -11,7 +11,7 @@
 		"en"
 	],
 	"RequiredPermissions": [
-		"http://gyran.se:9004",
+		"https://gyran.se:9004",
 		"http://spotyless.gyran.se:9004",
 		"http://www.google-analytics.com"
 	],

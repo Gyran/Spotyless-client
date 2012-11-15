@@ -29,3 +29,40 @@ h2 {
 #status.bad {
 	color: red;
 }
+
+#login {
+	text-align: center;
+	width: 300px;
+	padding: 10px;
+	position: relative;
+	margin: auto auto;
+}
+
+#login div {
+	margin-bottom: 10px;
+}
+
+#login label {
+	display: block;
+	width: 25%;
+	float: left;
+	text-align: right;
+}
+
+#login .submit {
+	
+}
+
+#password.wrong {
+	border: 1px solid #F00;
+}
+
+#logout {
+	width: 300px;
+	margin: auto auto;
+	text-align: center;
+}
+
+#logout .submit {
+	margin-top: 10px;
+}

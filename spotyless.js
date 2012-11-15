@@ -9,13 +9,13 @@ var player = models.player;
 /*********************/
 
 /* Remote variables */
-var BACKEND_HOST = 'http://gyran.se:9004';
+var BACKEND_HOST = 'https://gyran.se:9004';
 /********************/
 
 /* 'Static' variables */
 var STATUS_STOPPED = 0;
-var STATUS_LISTENING = 1;
-var STATUS_OFFLINE = 2;
+var STATUS_CONNECTED = 1;
+var STATUS_LOGGED_IN = 2;
 /**********************/
 
 /* HTML */
@@ -25,6 +25,13 @@ var HTML_HISTORY;
 var HTML_TOGGLE_BUTTON;
 var HTML_SEND_TRACK_BUTTON;
 /********/
+
+/***/
+var APP_loggedIn;
+var APP_username;
+var APP_hash;
+var APP_registred;
+/***/
 
 // userid
 var user;
@@ -42,22 +49,13 @@ var reconnectTimer;
 exports.init = init;
 
 function init() {
-	/* setup html elements */
-	HTML_USER = $('#user');
-	HTML_STATUS = $('#status');
-	HTML_HISTORY = $('#history');
-	HTML_TOGGLE_BUTTON = $('#btnToggle');
-	HTML_SEND_TRACK_BUTTON = $('#btnSendTrack');
+	// Set app variables
+	APP_loggedIn = false;
+	/****************/
 
-	status = STATUS_STOPPED;
+	$('#username').val(APP_username);
 
-	updateStatus();
-
-	user = sp.core.getAnonymousUserId();
-
-	HTML_USER.text('Userkey: ' + user);
-	$('#userinput').val(user);
-
+	APP_hash = sp.core.getAnonymousUserId();
 
 	setupButtons();
 
@@ -68,16 +66,41 @@ function init() {
 	startApp();
 }
 
-function playerChanged(event) {
-	sendPlayerUpdate();
+function playerChanged(e) {
+	$.each(e.data, function (key, value) {
+		if (value) {
+			sendPlayerUpdate();
+			return;
+		}
+	});
 }
 
 // bind buttons to events
 function setupButtons() {
 	// Toggle button
-	HTML_TOGGLE_BUTTON.click(toggleRemote);
-	HTML_SEND_TRACK_BUTTON.click(null);
-	
+	$('#btnLogin').click(login);
+	$('#btnLogout').click(logout);
+}
+
+function login() {
+	$('#password').removeClass('wrong');
+	$('#btnLogin').attr('disabled', 'disabled');
+	$('#btnLogout').removeAttr('disabled');
+	var username = $('#username').val();
+	var password = $('#password').val();
+
+	socket.emit('login', username, password);
+}
+
+function logout() {
+	$('#btnLogout').attr('disabled', 'disabled');
+	$('#btnLogin').removeAttr('disabled');
+	updateStatus('Connected', 'good');
+	socket.emit('logout');
+	APP_loggedIn = false;
+	APP_registred = false;
+	$('#logout').hide();
+	$('#login').show();
 }
 
 function stopApp() {
@@ -87,41 +110,6 @@ function stopApp() {
 function startApp() {
 	logApp('Starting');
 	connect();
-}
-
-function toggleRemote() {
-	if (status == STATUS_OFFLINE) {
-		return;
-	} else if (status == STATUS_LISTENING) {
-		stopApp();
-	} else if (status == STATUS_STOPPED) {
-		startApp();
-	}
-
-}
-
-function updateStatus() {
-	switch (status) {
-	case STATUS_STOPPED:
-		HTML_STATUS.text('Not listening');
-		HTML_STATUS.removeClass('bad good').addClass('bad');
-		HTML_TOGGLE_BUTTON.text('Start');
-		break;
-	case STATUS_LISTENING:
-		HTML_STATUS.text('Listening');
-		HTML_STATUS.removeClass('bad good').addClass('good');
-		HTML_TOGGLE_BUTTON.text('Stop');
-		break;
-	case STATUS_OFFLINE:
-		HTML_STATUS.text('Service offline');
-		HTML_STATUS.removeClass('bad good').addClass('bad');
-		HTML_TOGGLE_BUTTON.text('Retry');
-		break;
-	default:
-		HTML_STATUS.text('Unknown status');
-		HTML_STATUS.removeClass('bad good').addClass('bad');
-		break;
-	}
 }
 
 function hasPermission(type) {
@@ -165,35 +153,66 @@ function gotCommand(command) {
 	}
 }
 
-function clientConnected() {
+function clientConnected(clientid) {
 	logApp('client connected');
-	sendPlayerUpdate();
+	sendPlayerUpdate(clientid);
+}
+
+function updateStatus(text, newClass) {
+	$('#status').text(text).removeClass('good bad').addClass(newClass);
 }
 
 function connectionEstablished() {
-	status = STATUS_LISTENING;
-	updateStatus();
 	logApp("Socket connected");
+	updateStatus('Connected', 'good');
 }
 
 function disconnected() {
 	logApp('Socket disconnected');
 	status = STATUS_STOPPED;
-	updateStatus();
+	updateStatus('Disconnected', 'bad');
+}
+
+function wrongPassword() {
+	$('#password').val('');
+	$('#password').addClass('wrong');
+}
+
+function authenticated(username) {
+	APP_loggedIn = true;
+	APP_username = username;
+	$('#login').hide();
+	$('#loggedinAs').text('Logged in as ' + APP_username);
+	$('#logout').show();
+	status = STATUS_LOGGED_IN;
+
+	socket.emit('register', APP_hash);
+
+	updateStatus('Logged in', 'good');
+}
+
+function forcePlayerUpdate(clientid) {
+	sendPlayerUpdate(clientid);
+}
+
+function registred() {
+	APP_registred = true;
 }
 
 function connect() {
-	socket = io.connect(BACKEND_HOST + '/spotify');	
+	socket = io.connect(BACKEND_HOST + '/spotify', {secure: true});	
 
 	if (firstTime) {
-		socket.on('ready', connectionEstablished);
+		socket.on('connect', connectionEstablished);
 		socket.on('gotCommand', gotCommand);
-		socket.on('clientConnected', clientConnected);
 		socket.on('disconnect', disconnected);
+		socket.on('wrong password', wrongPassword);
+		socket.on('authenticated', authenticated);
+		socket.on('registred', registred);
+		socket.on('clientConnected', clientConnected);
+
 		firstTime = false;
 	}
-
-	socket.emit('register', { user: user });
 }
 
 function getPlayerObject() {
@@ -225,7 +244,7 @@ function nowStr() {
 }
 
 function log(l) {
-	HTML_HISTORY.prepend(nowStr() + ' - ' + l + '<br>');
+	$('#history').prepend(nowStr() + ' - ' + l + '<br>');
 }
 
 function logCommand(command) {
@@ -240,8 +259,10 @@ function logApp(message) {
 
 /* Send updates */
 
-function sendPlayerUpdate() {
-	socket.emit('playerUpdated', getPlayerObject());
+function sendPlayerUpdate(clientid) {
+	if (APP_registred) {
+		socket.emit('playerUpdated', getPlayerObject(), clientid);
+	}
 }
 
 /****************/
@@ -250,7 +271,6 @@ function sendPlayerUpdate() {
 
 function cmdPlaypause() {
 	if (!player.canPlayPause) {
-		console.log('cnat playpause');
 		return;
 	}
 	player.playing = !player.playing;

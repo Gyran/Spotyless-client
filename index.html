@@ -10,14 +10,35 @@
 
 </head>
 <body onload="sp = getSpotifyApi(1); spotyless = sp.require('spotyless'); spotyless.init();">
-<h1 id="header">Spotify remote!</h1>
-<h1 id="status">Not listessssning</h1>
-<h2 id="user"><!-- --></h2>
-<input id='userinput'>
+<h1 id="header">Spotyless</h1>
+<h1 id="status" class='bad'>Connecting...</h1>
+
+<div id='logout' style='display:none;'>
+	<div id='loggedinAs'>
+		
+	</div>
+	<div class='submit'>
+		<button class="sp-button" id='btnLogout'>Logout</button>
+	</div>
+</div>
+
+<div id='login'>
+	<div>
+		<label for='username'>Username:</label>
+		<input type='text' id='username'>
+	</div>
+	<div>
+		<Label for='password'>Password:</label> 
+		<input class='sp-input>' type='password' id='password'>
+	</div>
+
+	<div class='submit'>
+		<button class="sp-button" id='btnLogin'>Login</button>
+	</div>
+</div>
 
 <div id="buttons">
-	<button class="sp-button" id="btnToggle">Start</button>
-	<button class="sp-button" id="btnSendTrack">Send track</button>
+	
 </div>
 
 <div id="history"><!-- --></div>
