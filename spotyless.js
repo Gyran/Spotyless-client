@@ -12,27 +12,6 @@ var player = models.player;
 var BACKEND_HOST = 'https://gyran.se:9004';
 /********************/
 
-/* 'Static' variables */
-var STATUS_STOPPED = 0;
-var STATUS_CONNECTED = 1;
-var STATUS_LOGGED_IN = 2;
-/**********************/
-
-/* HTML */
-var HTML_STATUS;
-var HTML_USER;
-var HTML_HISTORY;
-var HTML_TOGGLE_BUTTON;
-var HTML_SEND_TRACK_BUTTON;
-/********/
-
-/***/
-var APP_loggedIn;
-var APP_username;
-var APP_hash;
-var APP_registred;
-/***/
-
 // userid
 var user;
 // socket
@@ -40,7 +19,13 @@ var socket;
 var firstTime = true;
 
 // status for the app
-var status;
+var APP_username;
+var APP_registred;
+var APP_hash;
+var APP_loggedIn;
+var APP_playlist;
+
+
 
 // number of attempts to reconnect
 var reconnectAttempts;
@@ -51,8 +36,12 @@ exports.init = init;
 function init() {
 	// Set app variables
 	APP_loggedIn = false;
+	APP_playlist = new models.Playlist();
 	/****************/
 
+	console.log(APP_playlist);
+
+	APP_username = 'Gyran';
 	$('#username').val(APP_username);
 
 	APP_hash = sp.core.getAnonymousUserId();
@@ -60,10 +49,21 @@ function init() {
 	setupButtons();
 
 	player.observe(models.EVENT.CHANGE, playerChanged);
+	APP_playlist.observe(models.EVENT.CHANGE, playlistChanged);
+
+
+	$('#history').click(function () {
+		console.log('history click');
+		APP_playlist.add('spotify:track:1hVQx6bg4uKPljAUkNjpY2');
+	});
 
 	logApp('Initialized');
 
 	startApp();
+}
+
+function playlistChanged() {
+	sendPlaylist();
 }
 
 function playerChanged(e) {
@@ -81,7 +81,6 @@ function playerChanged(e) {
 
 // bind buttons to events
 function setupButtons() {
-	// Toggle button
 	$('#btnLogin').click(login);
 	$('#btnLogout').click(logout);
 }
@@ -129,6 +128,7 @@ function hasPermission(type) {
 }
 
 function gotCommand(command) {
+	// TODO get seek command ms
 	console.log("Getting command", command);
 
 	if (hasPermission(command.type)) {
@@ -160,6 +160,7 @@ function gotCommand(command) {
 function clientConnected(clientid) {
 	logApp('client connected');
 	sendPlayerUpdate(clientid);
+	sendPlaylist(clientid);
 }
 
 function updateStatus(text, newClass) {
@@ -173,7 +174,6 @@ function connectionEstablished() {
 
 function disconnected() {
 	logApp('Socket disconnected');
-	status = STATUS_STOPPED;
 	updateStatus('Disconnected', 'bad');
 }
 
@@ -189,15 +189,14 @@ function authenticated(username) {
 	$('#login').hide();
 	$('#loggedinAs').text('Logged in as ' + APP_username);
 	$('#logout').show();
-	status = STATUS_LOGGED_IN;
 
 	socket.emit('register', APP_hash);
 
 	updateStatus('Logged in', 'good');
 }
 
-function forcePlayerUpdate(clientid) {
-	sendPlayerUpdate(clientid);
+function search(needle) {
+
 }
 
 function registred() {
@@ -216,6 +215,8 @@ function connect() {
 		socket.on('registred', registred);
 		socket.on('clientConnected', clientConnected);
 
+		socket.on('search', search);
+
 		firstTime = false;
 	}
 }
@@ -226,14 +227,19 @@ function getPlayerObject() {
 		'repeat': player.repeat,
 		'shuffle': player.shuffle,
 		'volume': player.volume,
-		'playing': player.playing
+		'playing': player.playing,
+		'context': player.context
 	};
+}
+
+function getPlaylistTracks() {
+	return APP_playlist.tracks;
 }
 
 /* Logging */
 
 function nowStr() {
-	var datePad = function (i) {
+	function datePad(i) {
 		if (i < 10) {
 			return '0' + i;
 		}
@@ -267,6 +273,13 @@ function logApp(message) {
 function sendPlayerUpdate(clientid) {
 	if (APP_registred) {
 		socket.emit('playerUpdated', getPlayerObject(), clientid);
+	}
+}
+
+function sendPlaylist(clientid) {
+	if (APP_registred) {
+		console.log('sending playlist');
+		socket.emit('playlistChanged', getPlaylistTracks(), clientid);
 	}
 }
 
