@@ -51,18 +51,24 @@ function init() {
 	player.observe(models.EVENT.CHANGE, playerChanged);
 	APP_playlist.observe(models.EVENT.CHANGE, playlistChanged);
 
-
-	$('#history').click(function () {
-		console.log('history click');
-		APP_playlist.add('spotify:track:1hVQx6bg4uKPljAUkNjpY2');
-	});
-
 	logApp('Initialized');
 
 	startApp();
 }
 
+function updatePlaylistTable() {
+	console.log('updating playlist');
+	$('#playlist').html('');
+
+	$.each(APP_playlist.tracks, function(key, track) {
+		var row = $('<tr>');
+		$('<td>', { text: track.data.name }).appendTo(row);
+		$('#playlist').append(row);
+	});
+}
+
 function playlistChanged() {
+	updatePlaylistTable();
 	sendPlaylist();
 }
 
@@ -78,6 +84,33 @@ function playerChanged(e) {
 		sendPlayerUpdate();
 	}
 }
+
+
+/** Utils **/
+function stripTracksInfo(tracks) {
+	var newTracks = [];
+	$.each(tracks, function (key, track) {
+		var newTrack = {
+			artist: getArtistString(track),
+			name: track.data.name,
+			uri: track.data.uri
+		};
+		newTracks.push(newTrack);
+	});
+
+	return newTracks;
+}
+
+function getArtistString(track) {
+	var s = '';
+	$.each(track.data.artists, function (key, artist) {
+		s += ', ' + artist.name;
+	});
+
+	return s.substr(2);
+}
+
+/***********/
 
 // bind buttons to events
 function setupButtons() {
@@ -120,6 +153,9 @@ function hasPermission(type) {
 		case 'player':
 			return true;
 			break;
+		case 'playlist':
+			return true;
+			break;
 		default:
 			log('Tried to use permission ' + type);
 			return false;
@@ -149,6 +185,25 @@ function gotCommand(command) {
 			case 'repeat':
 				cmdRepeat();
 				break;
+			case 'playTrack':
+				cmdPlayTrack(command.uri);
+				break;
+			case 'playSpotylessPlaylist':
+				cmdPlaySpotylessPlaylist();
+				break;
+
+			default:
+				logCommand("Unknown command");
+				break;
+			}
+		} else if (command.type == 'playlist') {
+			switch (command.action) {
+			case 'delTrack':
+				cmdDelTrack(command.uri);
+				break;
+			case 'addTrack':
+				cmdAddTrack(command.uri);
+				break;
 			default:
 				logCommand("Unknown command");
 				break;
@@ -157,10 +212,27 @@ function gotCommand(command) {
 	}
 }
 
+function getPermissions(clientid) {
+	return {
+		canPlayPause: true,
+		canPlayNext: true,
+		canPlayPrevious: true,
+		canSearch: true,
+		canAdd: true,
+		canPlayNew: true,
+		canRemove: true
+	};
+}
+
+function sendPermissions(clientid) {
+	socket.emit('sendPermissions', clientid, getPermissions(clientid));
+}
+
 function clientConnected(clientid) {
 	logApp('client connected');
 	sendPlayerUpdate(clientid);
 	sendPlaylist(clientid);
+	sendPermissions(clientid);
 }
 
 function updateStatus(text, newClass) {
@@ -195,8 +267,27 @@ function authenticated(username) {
 	updateStatus('Logged in', 'good');
 }
 
-function search(needle) {
+function doSearch(needle, callback) {
+	console.log('searching for', needle);
+	var search = new models.Search(needle);
+	search.localResults = models.LOCALSEARCHRESULTS.APPEND;
+	search.searchPlaylists = false;
+	search.searchAlbums = false;
+	search.searchArtists = false;
 
+	search.observe(models.EVENT.CHANGE, function() {
+		callback(search);
+	});
+
+	search.appendNext();
+
+}
+
+function clientSearch(clientid, needle) {
+	console.log('client is searching for', needle);
+	doSearch(needle, function(search) {
+		socket.emit('searchDone', clientid, stripTracksInfo(search.tracks));
+	});
 }
 
 function registred() {
@@ -204,7 +295,7 @@ function registred() {
 }
 
 function connect() {
-	socket = io.connect(BACKEND_HOST + '/spotify', {secure: true});	
+	socket = io.connect(BACKEND_HOST + '/spotify', { secure: true });	
 
 	if (firstTime) {
 		socket.on('connect', connectionEstablished);
@@ -215,7 +306,7 @@ function connect() {
 		socket.on('registred', registred);
 		socket.on('clientConnected', clientConnected);
 
-		socket.on('search', search);
+		socket.on('search', clientSearch);
 
 		firstTime = false;
 	}
@@ -233,7 +324,7 @@ function getPlayerObject() {
 }
 
 function getPlaylistTracks() {
-	return APP_playlist.tracks;
+	return stripTracksInfo(APP_playlist.tracks);
 }
 
 /* Logging */
@@ -338,6 +429,25 @@ function cmdRepeat() {
 	} else {
 		logCommand('Deactivate repeat');
 	}
+}
+
+function cmdPlayTrack(uri) {
+	if (player.context != APP_playlist.data.uri) {
+		player.play(APP_playlist.data.uri);
+	}
+	player.play(uri);
+}
+
+function cmdAddTrack(uri) {
+	APP_playlist.add(uri);
+}
+
+function cmdPlaySpotylessPlaylist() {
+	player.play(APP_playlist.data.uri);
+}
+
+function cmdDelTrack(uri) {
+	APP_playlist.remove(uri);
 }
 
 /************/
